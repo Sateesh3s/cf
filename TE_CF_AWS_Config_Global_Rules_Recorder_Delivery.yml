@@ -1,0 +1,355 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: Template for Creating AWS Config rules in TE Account
+Resources:
+  TETEAWSConfigServiceRole:
+    Type: 'AWS::IAM::ServiceLinkedRole'
+    Properties:
+      AWSServiceName: config.amazonaws.com
+      Description: >-
+        Allows Config to call AWS services and collect resource configurations
+        on your behalf
+  TEAWSCreateConfigBucket:
+    Type: 'AWS::S3::Bucket'
+    Properties:
+      BucketName: !Sub ${AWS::AccountId}-aws-config-check
+      # BucketName: !Join 
+      #   - ''
+      #   - - !Ref AccountName
+      #     - '-aws-config-check'
+  TEAWSConfigBucketPolicy:
+    Type: 'AWS::S3::BucketPolicy'
+    Properties:
+      PolicyDocument:
+        Id: TE_AWS_Config_Bucket_Policy
+        Version: 2012-10-17
+        Statement:
+          - Sid: AWSConfigBucketPermissionsCheck
+            Effect: Allow
+            Principal:
+              Service: config.amazonaws.com
+            Action: 's3:GetBucketAcl'
+            Resource: !Join 
+              - ''
+              - - 'arn:aws:s3:::'
+                - !Ref TEAWSCreateConfigBucket
+          - Sid: AWSConfigBucketDelivery
+            Effect: Allow
+            Principal:
+              Service: config.amazonaws.com
+            Action: 's3:PutObject'
+            Resource: !Join 
+              - ''
+              - - 'arn:aws:s3:::'
+                - !Ref TEAWSCreateConfigBucket
+                - /AWSLogs/
+                - !Sub ${AWS::AccountId}
+                - /Config/*
+            Condition:
+              StringEquals:
+                's3:x-amz-acl': bucket-owner-full-control
+      Bucket: !Ref TEAWSCreateConfigBucket
+    DependsOn:
+      - TEAWSCreateConfigBucket
+  TEAWSConfigConfigurationRecorder:
+    Type: 'AWS::Config::ConfigurationRecorder'
+    Properties:
+      Name: default
+      RecordingGroup:
+        ResourceTypes:
+          - 'AWS::EC2::Volume'
+          - 'AWS::AutoScaling::AutoScalingGroup'
+          - 'AWS::EC2::Instance'
+          - 'AWS::EC2::InternetGateway'
+          - 'AWS::EC2::VPC'
+          - 'AWS::ElasticLoadBalancing::LoadBalancer'
+          - 'AWS::ElasticLoadBalancingV2::LoadBalancer'
+          - 'AWS::RDS::DBInstance'
+          - 'AWS::RDS::DBSnapshot'
+          - 'AWS::Redshift::Cluster'
+          - 'AWS::S3::Bucket'
+          - 'AWS::EC2::Host'
+          - 'AWS::EC2::SecurityGroup'
+          - 'AWS::ElasticBeanstalk::Application'
+      RoleARN: !Join 
+        - ''
+        - - 'arn:aws:iam::'
+          - !Sub ${AWS::AccountId}
+          - ':role/aws-service-role/config.amazonaws.com/AWSServiceRoleForConfig'
+    DependsOn:
+      - TETEAWSConfigServiceRole
+  TEAWSConfigDeliveryChannel:
+    Type: 'AWS::Config::DeliveryChannel'
+    Properties:
+      S3BucketName: !Ref TEAWSCreateConfigBucket
+    DependsOn:
+      - TETEAWSConfigServiceRole
+      - TEAWSCreateConfigBucket
+  TEGlobalAWSRequiredResourceTagsGroup1:
+    Type: 'AWS::Config::ConfigRule'
+    Properties:
+      ConfigRuleName: TE-Global-AWS-Required-Resource-Tags-Group-1
+      Description: >-
+        Compliance check for required resource tags identified by the global
+        cloud support team
+      InputParameters:
+        tag1Key: 'ent:cost-center'
+        tag2Key: 'ent:app-name'
+        tag3Key: 'ent:app-owner'
+        tag4Key: 'ent:tech-owner'
+        tag5Key: 'ent:app-vendor'
+        tag6Key: 'ent:environment'
+        tag6Value: 'dev,stg,qa,prd,sbx'
+      Scope:
+        ComplianceResourceTypes:
+          - 'AWS::EC2::Instance'
+          - 'AWS::RDS::DBInstance'
+          - 'AWS::Redshift::Cluster'
+          - 'AWS::EC2::Host'
+      Source:
+        Owner: AWS
+        SourceIdentifier: REQUIRED_TAGS
+    DependsOn:
+      - TEAWSConfigConfigurationRecorder
+      - TETEAWSConfigServiceRole
+      - TEAWSConfigDeliveryChannel
+  TEGlobalAWSRequiredResourceTagsGroup2:
+    Type: 'AWS::Config::ConfigRule'
+    Properties:
+      ConfigRuleName: TE-Global-AWS-Required-Resource-Tags-Group-2
+      Description: >-
+        Compliance check for required resource tags identified by the global
+        cloud support team
+      InputParameters:
+        tag1Key: 'ent:tier'
+        tag1Value: 'app,web,db,stg'
+        tag2Key: 'ent:business-unit'
+        tag2Value: >-
+          teis,corptech,marketing,hr,appliances,channel,data-devices,adm,energy,industrial,medical,apptooling,auto,ict,sensors
+        tag3Key: 'ent:monitoring'
+        tag3Value: 'cloudwatch,none,datadog'
+      Scope:
+        ComplianceResourceTypes:
+          - 'AWS::EC2::Instance'
+          - 'AWS::RDS::DBInstance'
+          - 'AWS::Redshift::Cluster'
+          - 'AWS::EC2::Host'
+      Source:
+        Owner: AWS
+        SourceIdentifier: REQUIRED_TAGS
+    DependsOn:
+      - TEAWSConfigConfigurationRecorder
+      - TETEAWSConfigServiceRole
+      - TEAWSConfigDeliveryChannel
+  TEGlobalAWSRequiredResourceTagsS3:
+    Type: 'AWS::Config::ConfigRule'
+    Properties:
+      ConfigRuleName: TE-Global-AWS-Required-Resource-Tags-S3
+      Description: >-
+        Compliance check for S3 resource tags identified by the global cloud
+        support team
+      InputParameters:
+        tag1Key: 'ent:cost-center'
+        tag2Key: 'ent:tech-owner'
+      Scope:
+        ComplianceResourceTypes:
+          - 'AWS::S3::Bucket'
+      Source:
+        Owner: AWS
+        SourceIdentifier: REQUIRED_TAGS
+    DependsOn:
+      - TEAWSConfigConfigurationRecorder
+      - TETEAWSConfigServiceRole
+      - TEAWSConfigDeliveryChannel
+  TEGlobalAWSRequiredResourceTagsIAMUser:
+    Type: 'AWS::Config::ConfigRule'
+    Properties:
+      ConfigRuleName: TE-Global-AWS-Required-Resource-Tags-IAM
+      Description: >-
+        Compliance check for IAM User tags identified by the global cloud
+        support team
+      InputParameters:
+        tag1Key: 'ent:tech-owner'
+      Scope:
+        ComplianceResourceTypes:
+          - 'AWS::IAM::User'
+      Source:
+        Owner: AWS
+        SourceIdentifier: REQUIRED_TAGS
+    DependsOn:
+      - TEAWSConfigConfigurationRecorder
+      - TETEAWSConfigServiceRole
+      - TEAWSConfigDeliveryChannel
+  TEGlobalAWSS3PublicRead:
+    Type: 'AWS::Config::ConfigRule'
+    Properties:
+      ConfigRuleName: TE-Global-AWS-S3-Public-Read
+      Description: >-
+        Checks that your S3 buckets does not allow public read access.If an S3
+        bucket policy or bucket ACL allows public read access, the bucket is
+        noncompliant. Some buckets may be permissible for public read access
+        (i.e. te.com accounts
+      Scope:
+        ComplianceResourceTypes:
+          - 'AWS::S3::Bucket'
+      MaximumExecutionFrequency: TwentyFour_Hours
+      Source:
+        Owner: AWS
+        SourceIdentifier: S3_BUCKET_PUBLIC_READ_PROHIBITED
+    DependsOn:
+      - TEAWSConfigConfigurationRecorder
+      - TETEAWSConfigServiceRole
+      - TEAWSConfigDeliveryChannel
+  TEGlobalAWSIAMPasswordPolicy:
+    Type: 'AWS::Config::ConfigRule'
+    Properties:
+      ConfigRuleName: TE-Global-AWS-IAM-Password-Policy
+      Description: >-
+        Checks whether the account password policy for IAM users meets the
+        specified requirements
+      InputParameters:
+        RequireUppercaseCharacters: 'true'
+        RequireLowercaseCharacters: 'true'
+        RequireSymbols: 'true'
+        RequireNumbers: 'true'
+        MinimumPasswordLength: '16'
+        PasswordReusePrevention: '6'
+        MaxPasswordAge: '90'
+      MaximumExecutionFrequency: TwentyFour_Hours
+      Source:
+        Owner: AWS
+        SourceIdentifier: IAM_PASSWORD_POLICY
+    DependsOn:
+      - TEAWSConfigConfigurationRecorder
+      - TETEAWSConfigServiceRole
+      - TEAWSConfigDeliveryChannel
+  TEGlobalAWSS3PublicWrite:
+    Type: 'AWS::Config::ConfigRule'
+    Properties:
+      ConfigRuleName: TE-Global-AWS-S3-Public-Write
+      Description: >-
+        Checks that your S3 buckets does not allow public write access.If an S3
+        bucket policy or bucket ACL allows public write access, the bucket is
+        noncompliant.
+      Scope:
+        ComplianceResourceTypes:
+          - 'AWS::S3::Bucket'
+      MaximumExecutionFrequency: TwentyFour_Hours
+      Source:
+        Owner: AWS
+        SourceIdentifier: S3_BUCKET_PUBLIC_WRITE_PROHIBITED
+    DependsOn:
+      - TEAWSConfigConfigurationRecorder
+      - TETEAWSConfigServiceRole
+      - TEAWSConfigDeliveryChannel
+  TEGlobalAWSCloudtrailEnabled:
+    Type: 'AWS::Config::ConfigRule'
+    Properties:
+      ConfigRuleName: TE-Global-AWS-Cloudtrail-Enabled
+      Description: >-
+        Checks whether AWS Cloudtrail is Enabled in your AWS account. Optionally
+        you can specify which S3 bucket, SNS topic, and Amazon Cloud Watch ARN
+        to use.
+      MaximumExecutionFrequency: TwentyFour_Hours
+      Source:
+        Owner: AWS
+        SourceIdentifier: CLOUD_TRAIL_ENABLED
+    DependsOn:
+      - TEAWSConfigConfigurationRecorder
+      - TETEAWSConfigServiceRole
+      - TEAWSConfigDeliveryChannel
+  TEGlobalAWSRDSSnapshotsPublic:
+    Type: 'AWS::Config::ConfigRule'
+    Properties:
+      ConfigRuleName: TE-Global-AWS-RDS-Snapshots-Public
+      Description: >-
+        Checks if Amazon Relational Database Service (Amazon RDS) snapshots are
+        public. The rule is non-compliant if any existing and new Amazon RDS
+        snapshots are public.
+      Scope:
+        ComplianceResourceTypes:
+          - 'AWS::RDS::DBSnapshot'
+      Source:
+        Owner: AWS
+        SourceIdentifier: RDS_SNAPSHOTS_PUBLIC_PROHIBITED
+    DependsOn:
+      - TEAWSConfigConfigurationRecorder
+      - TETEAWSConfigServiceRole
+      - TEAWSConfigDeliveryChannel
+  TEGlobalAWSSGRestrictedPortsforAnySource:
+    Type: 'AWS::Config::ConfigRule'
+    Properties:
+      ConfigRuleName: TE-Global-AWS-SG-Restricted-Ports-for-Any-Source
+      Description: >-
+        Checks whether any security groups with inbound 0.0.0.0/0 have TCP or
+        UDP ports accessible. The rule is NON_COMPLIANT when a security group
+        with inbound 0.0.0.0/0 has a port accessible which is not specified in
+        the rule parameters.
+      Scope:
+        ComplianceResourceTypes:
+          - 'AWS::EC2::SecurityGroup'
+      Source:
+        Owner: AWS
+        SourceIdentifier: VPC_SG_OPEN_ONLY_TO_AUTHORIZED_PORTS
+    DependsOn:
+      - TEAWSConfigConfigurationRecorder
+      - TETEAWSConfigServiceRole
+      - TEAWSConfigDeliveryChannel
+  TEGlobalAWSEC2PublicIP:
+    Type: 'AWS::Config::ConfigRule'
+    Properties:
+      ConfigRuleName: TE-Global-AWS-EC2-Public-IP
+      Description: >-
+        Checks whether Amazon Elastic Compute Cloud (Amazon EC2) instances have
+        a public IP association. The rule is NON_COMPLIANT if the publicIp field
+        is present in the Amazon EC2 instance configuration item. This rule
+        applies only to IPv4.
+      Scope:
+        ComplianceResourceTypes:
+          - 'AWS::EC2::Instance'
+      Source:
+        Owner: AWS
+        SourceIdentifier: EC2_INSTANCE_NO_PUBLIC_IP
+    DependsOn:
+      - TEAWSConfigConfigurationRecorder
+      - TETEAWSConfigServiceRole
+      - TEAWSConfigDeliveryChannel
+  TEGlobalAWSRDSPubliclyAccessible:
+    Type: 'AWS::Config::ConfigRule'
+    Properties:
+      ConfigRuleName: TE-Global-AWS-RDS-Publicly-Accessible
+      Description: >-
+        Checks whether the Amazon Relational Database Service (RDS) instances
+        are not publicly accessible. The rule is non-compliant if the
+        publiclyAccessible field is true in the instance configuration item.
+      Scope:
+        ComplianceResourceTypes:
+          - 'AWS::RDS::DBInstance'
+      Source:
+        Owner: AWS
+        SourceIdentifier: RDS_INSTANCE_PUBLIC_ACCESS_CHECK
+    DependsOn:
+      - TEAWSConfigConfigurationRecorder
+      - TETEAWSConfigServiceRole
+      - TEAWSConfigDeliveryChannel
+  TEGlobalAWSRequiredBackupTags:
+    Type: 'AWS::Config::ConfigRule'
+    Properties:
+      ConfigRuleName: TE-Global-AWS-Backup-Required-tags
+      Description: >-
+        Operational check to ensure all EC2's have the required daily/weekly
+        backup tags
+      InputParameters:
+        tag1Key: 'ent:dailybackup'
+        tag1Value: 'true,false'
+        tag2Key: 'ent:weeklybackup'
+        tag2Value: 'true,false'
+      Scope:
+        ComplianceResourceTypes:
+          - 'AWS::EC2::Instance'
+      Source:
+        Owner: AWS
+        SourceIdentifier: REQUIRED_TAGS
+    DependsOn:
+      - TEAWSConfigConfigurationRecorder
+      - TETEAWSConfigServiceRole
+      - TEAWSConfigDeliveryChannel
