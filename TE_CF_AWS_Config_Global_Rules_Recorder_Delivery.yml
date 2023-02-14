@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: 2010-09-09
-Description: Template for Creating AWS Config rules in TE Account
+Description: Template for Creating AWS Config rules in personal Account
 Resources:
   TETEAWSConfigServiceRole:
     Type: 'AWS::IAM::ServiceLinkedRole'
